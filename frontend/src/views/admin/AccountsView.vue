@@ -134,6 +134,7 @@
         <AccountBulkActionsBar
           :selected-count="selectedCount"
           :filtered-selection-active="hasFilteredSelection"
+          :can-select-page="canSelectPage"
           :can-select-all-matching="canSelectAllMatching"
           :matching-count="pagination.total"
           :edit-loading="openingBulkEdit"
@@ -624,6 +625,7 @@ const {
 const hasFilteredSelection = computed(() => filteredSelectionFilters.value !== null)
 const selectedCount = computed(() => (hasFilteredSelection.value ? pagination.total : selIds.value.length))
 const allVisibleSelectedForDisplay = computed(() => (hasFilteredSelection.value ? accounts.value.length > 0 : allVisibleSelected.value))
+const canSelectPage = computed(() => !hasFilteredSelection.value && accounts.value.length > 0 && !allVisibleSelected.value)
 const canSelectAllMatching = computed(
   () => !hasFilteredSelection.value && allVisibleSelected.value && pagination.total > selIds.value.length
 )

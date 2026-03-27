@@ -18,6 +18,7 @@ function mountBar(extraProps: Record<string, unknown> = {}) {
     props: {
       selectedCount: 20,
       filteredSelectionActive: false,
+      canSelectPage: true,
       canSelectAllMatching: false,
       matchingCount: 120,
       editLoading: false,
@@ -47,6 +48,7 @@ describe('AccountBulkActionsBar', () => {
   it('hides non-edit bulk actions in filtered-selection mode', () => {
     const wrapper = mountBar({
       filteredSelectionActive: true,
+      canSelectPage: false,
       canSelectAllMatching: true
     })
 
@@ -59,6 +61,17 @@ describe('AccountBulkActionsBar', () => {
     expect(wrapper.text()).not.toContain('admin.accounts.bulkActions.enableScheduling')
     expect(wrapper.text()).not.toContain('admin.accounts.bulkActions.disableScheduling')
     expect(wrapper.text()).toContain('admin.accounts.bulkActions.edit')
+    expect(wrapper.text()).toContain('admin.accounts.bulkActions.clear')
+  })
+
+  it('hides select-current-page once the current page is already fully selected', () => {
+    const wrapper = mountBar({
+      canSelectPage: false,
+      canSelectAllMatching: false
+    })
+
+    expect(wrapper.text()).not.toContain('admin.accounts.bulkActions.selectCurrentPage')
+    expect(wrapper.text()).not.toContain('admin.accounts.bulkActions.selectAllMatching')
     expect(wrapper.text()).toContain('admin.accounts.bulkActions.clear')
   })
 })

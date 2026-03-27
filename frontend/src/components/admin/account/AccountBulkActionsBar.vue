@@ -9,13 +9,18 @@
         }}
       </span>
       <button
-        v-if="!filteredSelectionActive"
+        v-if="!filteredSelectionActive && canSelectPage"
         @click="$emit('select-page')"
         class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
       >
         {{ t('admin.accounts.bulkActions.selectCurrentPage') }}
       </button>
-      <span v-if="!filteredSelectionActive && canSelectAllMatching" class="text-gray-300 dark:text-primary-800">•</span>
+      <span
+        v-if="!filteredSelectionActive && canSelectPage && canSelectAllMatching"
+        class="text-gray-300 dark:text-primary-800"
+      >
+        •
+      </span>
       <button
         v-if="!filteredSelectionActive && canSelectAllMatching"
         @click="$emit('select-all-matching')"
@@ -52,6 +57,7 @@ import { useI18n } from 'vue-i18n'
 defineProps({
   selectedCount: { type: Number, required: true },
   filteredSelectionActive: { type: Boolean, default: false },
+  canSelectPage: { type: Boolean, default: false },
   canSelectAllMatching: { type: Boolean, default: false },
   matchingCount: { type: Number, default: 0 },
   editLoading: { type: Boolean, default: false }
