@@ -131,7 +131,21 @@
         </div>
       </template>
       <template #table>
-        <AccountBulkActionsBar :selected-ids="selIds" @delete="handleBulkDelete" @reset-status="handleBulkResetStatus" @refresh-token="handleBulkRefreshToken" @edit="showBulkEdit = true" @clear="clearSelection" @select-page="selectPage" @toggle-schedulable="handleBulkToggleSchedulable" />
+        <AccountBulkActionsBar
+          :selected-count="selectedCount"
+          :filtered-selection-active="hasFilteredSelection"
+          :can-select-all-matching="canSelectAllMatching"
+          :matching-count="pagination.total"
+          :edit-loading="openingBulkEdit"
+          @delete="handleBulkDelete"
+          @reset-status="handleBulkResetStatus"
+          @refresh-token="handleBulkRefreshToken"
+          @edit="openBulkEditModal"
+          @clear="clearSelectionTarget"
+          @select-page="handleSelectPage"
+          @select-all-matching="handleSelectAllMatching"
+          @toggle-schedulable="handleBulkToggleSchedulable"
+        />
         <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable
           :columns="cols"
@@ -146,13 +160,20 @@
             <input
               type="checkbox"
               class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              :checked="allVisibleSelected"
+              :checked="allVisibleSelectedForDisplay"
+              :disabled="hasFilteredSelection"
               @click.stop
               @change="toggleSelectAllVisible($event)"
             />
           </template>
           <template #cell-select="{ row }">
-            <input type="checkbox" :checked="selIds.includes(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <input
+              type="checkbox"
+              :checked="isRowSelected(row.id)"
+              :disabled="hasFilteredSelection"
+              @change="toggleRowSelection(row.id)"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+            />
           </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
@@ -279,7 +300,17 @@
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
-    <BulkEditAccountModal :show="showBulkEdit" :account-ids="selIds" :selected-platforms="selPlatforms" :selected-types="selTypes" :proxies="proxies" :groups="groups" @close="showBulkEdit = false" @updated="handleBulkUpdated" />
+    <BulkEditAccountModal
+      :show="showBulkEdit"
+      :selection-target="bulkEditSelectionTarget"
+      :selection-count="bulkEditSelectionPreview?.total ?? selectedCount"
+      :selected-platforms="bulkEditSelectionPreview?.platforms ?? []"
+      :selected-types="bulkEditSelectionPreview?.types ?? []"
+      :proxies="proxies"
+      :groups="groups"
+      @close="closeBulkEditModal"
+      @updated="handleBulkUpdated"
+    />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
     <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
@@ -299,6 +330,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import type { AccountSelectionFilters, AccountSelectionPreview, AccountSelectionTarget } from '@/api/admin/accounts'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -328,7 +360,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
-import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
+import type { Account, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -337,22 +369,6 @@ const authStore = useAuthStore()
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
-const selPlatforms = computed<AccountPlatform[]>(() => {
-  const platforms = new Set(
-    accounts.value
-      .filter(a => isSelected(a.id))
-      .map(a => a.platform)
-  )
-  return [...platforms]
-})
-const selTypes = computed<AccountType[]>(() => {
-  const types = new Set(
-    accounts.value
-      .filter(a => isSelected(a.id))
-      .map(a => a.type)
-  )
-  return [...types]
-})
 const showCreate = ref(false)
 const showEdit = ref(false)
 const showSync = ref(false)
@@ -408,6 +424,10 @@ const todayStatsError = ref<string | null>(null)
 const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
+const filteredSelectionFilters = ref<AccountSelectionFilters | null>(null)
+const bulkEditSelectionTarget = ref<AccountSelectionTarget | null>(null)
+const bulkEditSelectionPreview = ref<AccountSelectionPreview | null>(null)
+const openingBulkEdit = ref(false)
 
 const buildDefaultTodayStats = (): WindowStats => ({
   requests: 0,
@@ -601,10 +621,120 @@ const {
   getId: (account) => account.id
 })
 
+const hasFilteredSelection = computed(() => filteredSelectionFilters.value !== null)
+const selectedCount = computed(() => (hasFilteredSelection.value ? pagination.total : selIds.value.length))
+const allVisibleSelectedForDisplay = computed(() => (hasFilteredSelection.value ? accounts.value.length > 0 : allVisibleSelected.value))
+const canSelectAllMatching = computed(
+  () => !hasFilteredSelection.value && allVisibleSelected.value && pagination.total > selIds.value.length
+)
+
+const buildCurrentSelectionFilters = (): AccountSelectionFilters => {
+  const filters: AccountSelectionFilters = {}
+  if (params.platform) filters.platform = params.platform
+  if (params.type) filters.type = params.type
+  if (params.status) filters.status = params.status
+  if (params.group) filters.group = params.group
+  if (params.search) filters.search = String(params.search).trim()
+  if (params.privacy_mode) filters.privacy_mode = params.privacy_mode
+  return filters
+}
+
+const currentFilterSelectionKey = computed(() => JSON.stringify(buildCurrentSelectionFilters()))
+
+const clearBulkEditPreview = () => {
+  bulkEditSelectionTarget.value = null
+  bulkEditSelectionPreview.value = null
+}
+
+const clearSelectionTarget = (options?: { notifyFilteredClear?: boolean }) => {
+  const shouldNotify = options?.notifyFilteredClear === true && hasFilteredSelection.value
+  clearSelection()
+  filteredSelectionFilters.value = null
+  clearBulkEditPreview()
+  if (shouldNotify) {
+    appStore.showInfo(t('admin.accounts.bulkActions.filteredSelectionCleared'))
+  }
+}
+
+const handleSelectPage = () => {
+  clearBulkEditPreview()
+  selectPage()
+}
+
+const handleSelectAllMatching = () => {
+  filteredSelectionFilters.value = buildCurrentSelectionFilters()
+  clearSelection()
+  clearBulkEditPreview()
+}
+
+const currentSelectionTarget = computed<AccountSelectionTarget | null>(() => {
+  if (filteredSelectionFilters.value) {
+    return {
+      filters: { ...filteredSelectionFilters.value }
+    }
+  }
+  if (selIds.value.length > 0) {
+    return {
+      account_ids: [...selIds.value]
+    }
+  }
+  return null
+})
+
+const isRowSelected = (id: number) => (hasFilteredSelection.value ? true : isSelected(id))
+
+const toggleRowSelection = (id: number) => {
+  if (hasFilteredSelection.value) return
+  clearBulkEditPreview()
+  toggleSel(id)
+}
+
+const openBulkEditModal = async () => {
+  const target = currentSelectionTarget.value
+  if (!target) {
+    appStore.showError(t('admin.accounts.bulkEdit.noSelection'))
+    return
+  }
+
+  openingBulkEdit.value = true
+  try {
+    const preview = await adminAPI.accounts.previewSelection(target)
+    if (preview.total === 0) {
+      clearSelectionTarget()
+      appStore.showError(t('admin.accounts.bulkEdit.noSelection'))
+      return
+    }
+
+    bulkEditSelectionTarget.value = {
+      account_ids: target.account_ids ? [...target.account_ids] : undefined,
+      filters: target.filters ? { ...target.filters } : undefined
+    }
+    bulkEditSelectionPreview.value = preview
+    showBulkEdit.value = true
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.accounts.bulkEdit.previewFailed'))
+  } finally {
+    openingBulkEdit.value = false
+  }
+}
+
+const closeBulkEditModal = () => {
+  showBulkEdit.value = false
+  clearBulkEditPreview()
+}
+
 useSwipeSelect(accountTableRef, {
-  isSelected,
-  select,
-  deselect
+  isSelected: (id) => (hasFilteredSelection.value ? true : isSelected(id)),
+  select: (id) => {
+    if (hasFilteredSelection.value) return
+    clearBulkEditPreview()
+    select(id)
+  },
+  deselect: (id) => {
+    if (hasFilteredSelection.value) return
+    clearBulkEditPreview()
+    deselect(id)
+  }
 })
 
 const resetAutoRefreshCache = () => {
@@ -665,6 +795,11 @@ watch(loading, (isLoading, wasLoading) => {
       console.error('Failed to refresh account today stats after table load:', error)
     })
   }
+})
+
+watch(currentFilterSelectionKey, (nextKey, prevKey) => {
+  if (!hasFilteredSelection.value || prevKey === undefined || nextKey === prevKey) return
+  clearSelectionTarget({ notifyFilteredClear: true })
 })
 
 const isAnyModalOpen = computed(() => {
@@ -950,7 +1085,9 @@ const openMenu = (a: Account, e: MouseEvent) => {
   menu.show = true
 }
 const toggleSelectAllVisible = (event: Event) => {
+  if (hasFilteredSelection.value) return
   const target = event.target as HTMLInputElement
+  clearBulkEditPreview()
   toggleVisible(target.checked)
 }
 const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); clearSelection(); reload() } catch (error) { console.error('Failed to bulk delete accounts:', error) } }
@@ -1088,7 +1225,7 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
     appStore.showError(t('common.error'))
   }
 }
-const handleBulkUpdated = () => { showBulkEdit.value = false; clearSelection(); reload() }
+const handleBulkUpdated = () => { showBulkEdit.value = false; clearSelectionTarget(); reload() }
 const handleDataImported = () => { showImportData.value = false; reload() }
 const accountMatchesCurrentFilters = (account: Account) => {
   if (params.platform && account.platform !== params.platform) return false
@@ -1172,7 +1309,9 @@ const handleExportData = async () => {
               platform: params.platform,
               type: params.type,
               status: params.status,
-              search: params.search
+              group: params.group,
+              search: params.search,
+              privacy_mode: params.privacy_mode
             }
           }
     )

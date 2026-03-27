@@ -6,6 +6,8 @@
 import { apiClient } from '../client'
 import type {
   Account,
+  AccountPlatform,
+  AccountType,
   CreateAccountRequest,
   UpdateAccountRequest,
   PaginatedResponse,
@@ -52,6 +54,26 @@ export async function list(
     signal: options?.signal
   })
   return data
+}
+
+export interface AccountSelectionFilters {
+  platform?: string
+  type?: string
+  status?: string
+  group?: string
+  search?: string
+  privacy_mode?: string
+}
+
+export interface AccountSelectionTarget {
+  account_ids?: number[]
+  filters?: AccountSelectionFilters
+}
+
+export interface AccountSelectionPreview {
+  total: number
+  platforms: AccountPlatform[]
+  types: AccountType[]
 }
 
 export interface AccountListWithEtagResult {
@@ -366,7 +388,7 @@ export async function batchUpdateCredentials(request: {
  * @returns Success confirmation
  */
 export async function bulkUpdate(
-  accountIds: number[],
+  accountIdsOrTarget: number[] | AccountSelectionTarget,
   updates: Record<string, unknown>
 ): Promise<{
   success: number
@@ -375,6 +397,9 @@ export async function bulkUpdate(
   failed_ids?: number[]
   results: Array<{ account_id: number; success: boolean; error?: string }>
   }> {
+  const target = Array.isArray(accountIdsOrTarget)
+    ? { account_ids: accountIdsOrTarget }
+    : accountIdsOrTarget
   const { data } = await apiClient.post<{
     success: number
     failed: number
@@ -382,9 +407,14 @@ export async function bulkUpdate(
     failed_ids?: number[]
     results: Array<{ account_id: number; success: boolean; error?: string }>
   }>('/admin/accounts/bulk-update', {
-    account_ids: accountIds,
+    ...target,
     ...updates
   })
+  return data
+}
+
+export async function previewSelection(target: AccountSelectionTarget): Promise<AccountSelectionPreview> {
+  const { data } = await apiClient.post<AccountSelectionPreview>('/admin/accounts/selection-preview', target)
   return data
 }
 
@@ -500,7 +530,9 @@ export async function exportData(options?: {
     platform?: string
     type?: string
     status?: string
+    group?: string
     search?: string
+    privacy_mode?: string
   }
   includeProxies?: boolean
 }): Promise<AdminDataPayload> {
@@ -508,11 +540,13 @@ export async function exportData(options?: {
   if (options?.ids && options.ids.length > 0) {
     params.ids = options.ids.join(',')
   } else if (options?.filters) {
-    const { platform, type, status, search } = options.filters
+    const { platform, type, status, group, search, privacy_mode } = options.filters
     if (platform) params.platform = platform
     if (type) params.type = type
     if (status) params.status = status
+    if (group) params.group = group
     if (search) params.search = search
+    if (privacy_mode) params.privacy_mode = privacy_mode
   }
   if (options?.includeProxies === false) {
     params.include_proxies = 'false'
@@ -674,6 +708,7 @@ export const accountsAPI = {
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
+  previewSelection,
   setPrivacy
 }
 

@@ -372,24 +372,6 @@ func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, e
 	return out, nil
 }
 
-func (h *AccountHandler) listAccountsFiltered(ctx context.Context, platform, accountType, status, search string) ([]service.Account, error) {
-	page := 1
-	pageSize := dataPageCap
-	var out []service.Account
-	for {
-		items, total, err := h.adminService.ListAccounts(ctx, page, pageSize, platform, accountType, status, search, 0, "")
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, items...)
-		if len(out) >= int(total) || len(items) == 0 {
-			break
-		}
-		page++
-	}
-	return out, nil
-}
-
 func (h *AccountHandler) resolveExportAccounts(ctx context.Context, ids []int64, c *gin.Context) ([]service.Account, error) {
 	if len(ids) > 0 {
 		accounts, err := h.adminService.GetAccountsByIDs(ctx, ids)
@@ -406,14 +388,7 @@ func (h *AccountHandler) resolveExportAccounts(ctx context.Context, ids []int64,
 		return out, nil
 	}
 
-	platform := c.Query("platform")
-	accountType := c.Query("type")
-	status := c.Query("status")
-	search := strings.TrimSpace(c.Query("search"))
-	if len(search) > 100 {
-		search = search[:100]
-	}
-	return h.listAccountsFiltered(ctx, platform, accountType, status, search)
+	return h.listAccountsForSelectionFilters(ctx, accountSelectionFiltersFromQuery(c))
 }
 
 func (h *AccountHandler) resolveExportProxies(ctx context.Context, accounts []service.Account) ([]service.Proxy, error) {

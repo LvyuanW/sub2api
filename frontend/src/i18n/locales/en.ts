@@ -2105,7 +2105,10 @@ export default {
       bulkSchedulableResultUnknown: 'Bulk scheduling result incomplete. Please retry or refresh.',
       bulkActions: {
         selected: '{count} account(s) selected',
+        selectedMatching: 'Selected all {count} account(s) in the current filtered results',
         selectCurrentPage: 'Select this page',
+        selectAllMatching: 'Switch to all {count} account(s) in the current filtered results',
+        filteredSelectionCleared: 'Filters changed, so the “all filtered results” selection was cleared.',
         clear: 'Clear selection',
         edit: 'Bulk Edit',
         delete: 'Bulk Delete',
@@ -2128,6 +2131,7 @@ export default {
         success: 'Updated {count} account(s)',
         partialSuccess: 'Partially updated: {success} succeeded, {failed} failed',
         failed: 'Bulk update failed',
+        previewFailed: 'Failed to load the bulk edit preview',
         noSelection: 'Please select accounts to edit',
         noFieldsSelected: 'Select at least one field to update',
         mixedPlatformWarning: 'Selected accounts span multiple platforms ({platforms}). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.'

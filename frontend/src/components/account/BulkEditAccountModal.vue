@@ -17,7 +17,7 @@
               d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
             />
           </svg>
-          {{ t('admin.accounts.bulkEdit.selectionInfo', { count: accountIds.length }) }}
+          {{ t('admin.accounts.bulkEdit.selectionInfo', { count: selectionCount }) }}
         </p>
       </div>
 
@@ -908,6 +908,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import type { AccountSelectionTarget } from '@/api/admin/accounts'
 import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -929,7 +930,8 @@ import {
 import type { OpenAIWSMode } from '@/utils/openaiWsMode'
 interface Props {
   show: boolean
-  accountIds: number[]
+  selectionTarget: AccountSelectionTarget | null
+  selectionCount: number
   selectedPlatforms: AccountPlatform[]
   selectedTypes: AccountType[]
   proxies: ProxyConfig[]
@@ -1323,7 +1325,7 @@ const preCheckMixedChannelRisk = async (built: Record<string, unknown>): Promise
 }
 
 const handleSubmit = async () => {
-  if (props.accountIds.length === 0) {
+  if (!props.selectionTarget || props.selectionCount === 0) {
     appStore.showError(t('admin.accounts.bulkEdit.noSelection'))
     return
   }
@@ -1371,7 +1373,12 @@ const submitBulkUpdate = async (baseUpdates: Record<string, unknown>) => {
   submitting.value = true
 
   try {
-    const res = await adminAPI.accounts.bulkUpdate(props.accountIds, updates)
+    if (!props.selectionTarget) {
+      appStore.showError(t('admin.accounts.bulkEdit.noSelection'))
+      return
+    }
+
+    const res = await adminAPI.accounts.bulkUpdate(props.selectionTarget, updates)
     const success = res.success || 0
     const failed = res.failed || 0
 

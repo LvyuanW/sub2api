@@ -2255,7 +2255,10 @@ export default {
       bulkSchedulableResultUnknown: '批量调度结果不完整，请稍后重试或刷新列表',
       bulkActions: {
         selected: '已选择 {count} 个账号',
+        selectedMatching: '已选择当前筛选结果的 {count} 个账号',
         selectCurrentPage: '本页全选',
+        selectAllMatching: '改为选择当前筛选结果的 {count} 个账号',
+        filteredSelectionCleared: '筛选条件已变更，已清除“当前筛选结果全选”状态',
         clear: '清除选择',
         edit: '批量编辑账号',
         delete: '批量删除',
@@ -2277,6 +2280,7 @@ export default {
         success: '成功更新 {count} 个账号',
         partialSuccess: '部分更新成功：成功 {success} 个，失败 {failed} 个',
         failed: '批量更新失败',
+        previewFailed: '加载批量编辑预览失败',
         noSelection: '请选择要编辑的账号',
         noFieldsSelected: '请至少选择一个要更新的字段',
         mixedPlatformWarning: '所选账号跨越多个平台（{platforms}）。显示的模型映射预设为合并结果——请确保映射对每个平台都适用。'

@@ -134,7 +134,7 @@ type UpdateAccountRequest struct {
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
 type BulkUpdateAccountsRequest struct {
-	AccountIDs              []int64        `json:"account_ids" binding:"required,min=1"`
+	AccountSelectionRequest
 	Name                    string         `json:"name"`
 	ProxyID                 *int64         `json:"proxy_id"`
 	Concurrency             *int           `json:"concurrency"`
@@ -216,37 +216,26 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 // GET /api/v1/admin/accounts
 func (h *AccountHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
-	platform := c.Query("platform")
-	accountType := c.Query("type")
-	status := c.Query("status")
-	search := c.Query("search")
-	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
-	// 标准化和验证 search 参数
-	search = strings.TrimSpace(search)
-	if len(search) > 100 {
-		search = search[:100]
-	}
+	filters := accountSelectionFiltersFromQuery(c)
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
 
-	var groupID int64
-	if groupIDStr := c.Query("group"); groupIDStr != "" {
-		if groupIDStr == accountListGroupUngroupedQueryValue {
-			groupID = service.AccountListGroupUngrouped
-		} else {
-			parsedGroupID, parseErr := strconv.ParseInt(groupIDStr, 10, 64)
-			if parseErr != nil {
-				response.ErrorFrom(c, infraerrors.BadRequest("INVALID_GROUP_FILTER", "invalid group filter"))
-				return
-			}
-			if parsedGroupID < 0 {
-				response.ErrorFrom(c, infraerrors.BadRequest("INVALID_GROUP_FILTER", "invalid group filter"))
-				return
-			}
-			groupID = parsedGroupID
-		}
+	groupID, err := parseAccountSelectionGroupID(filters.Group)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode)
+	accounts, total, err := h.adminService.ListAccounts(
+		c.Request.Context(),
+		page,
+		pageSize,
+		filters.Platform,
+		filters.Type,
+		filters.Status,
+		filters.Search,
+		groupID,
+		filters.PrivacyMode,
+	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -368,7 +357,19 @@ func (h *AccountHandler) List(c *gin.Context) {
 		result[i] = item
 	}
 
-	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite)
+	etag := buildAccountsListETag(
+		result,
+		total,
+		page,
+		pageSize,
+		filters.Platform,
+		filters.Type,
+		filters.Status,
+		filters.Group,
+		filters.Search,
+		filters.PrivacyMode,
+		lite,
+	)
 	if etag != "" {
 		c.Header("ETag", etag)
 		c.Header("Vary", "If-None-Match")
@@ -385,7 +386,7 @@ func buildAccountsListETag(
 	items []AccountWithConcurrency,
 	total int64,
 	page, pageSize int,
-	platform, accountType, status, search string,
+	platform, accountType, status, group, search, privacyMode string,
 	lite bool,
 ) string {
 	payload := struct {
@@ -395,7 +396,9 @@ func buildAccountsListETag(
 		Platform    string                   `json:"platform"`
 		AccountType string                   `json:"type"`
 		Status      string                   `json:"status"`
+		Group       string                   `json:"group"`
 		Search      string                   `json:"search"`
+		PrivacyMode string                   `json:"privacy_mode"`
 		Lite        bool                     `json:"lite"`
 		Items       []AccountWithConcurrency `json:"items"`
 	}{
@@ -405,7 +408,9 @@ func buildAccountsListETag(
 		Platform:    platform,
 		AccountType: accountType,
 		Status:      status,
+		Group:       group,
 		Search:      search,
+		PrivacyMode: privacyMode,
 		Lite:        lite,
 		Items:       items,
 	}
@@ -1328,6 +1333,28 @@ func (h *AccountHandler) BatchUpdateCredentials(c *gin.Context) {
 	})
 }
 
+// PreviewSelection handles previewing a selection target for bulk account edits.
+// POST /api/v1/admin/accounts/selection-preview
+func (h *AccountHandler) PreviewSelection(c *gin.Context) {
+	var req AccountSelectionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	selection, err := h.resolveAccountSelection(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, AccountSelectionPreviewResponse{
+		Total:     selection.Total,
+		Platforms: selection.Platforms,
+		Types:     selection.Types,
+	})
+}
+
 // BulkUpdate handles bulk updating accounts with selected fields/credentials.
 // POST /api/v1/admin/accounts/bulk-update
 func (h *AccountHandler) BulkUpdate(c *gin.Context) {
@@ -1363,8 +1390,18 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		return
 	}
 
+	selection, err := h.resolveAccountSelection(c.Request.Context(), req.AccountSelectionRequest)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if len(selection.AccountIDs) == 0 {
+		response.BadRequest(c, "No accounts selected")
+		return
+	}
+
 	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
-		AccountIDs:            req.AccountIDs,
+		AccountIDs:            selection.AccountIDs,
 		Name:                  req.Name,
 		ProxyID:               req.ProxyID,
 		Concurrency:           req.Concurrency,

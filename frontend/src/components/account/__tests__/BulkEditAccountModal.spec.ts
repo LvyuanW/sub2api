@@ -39,7 +39,8 @@ function mountModal(extraProps: Record<string, unknown> = {}) {
   return mount(BulkEditAccountModal, {
     props: {
       show: true,
-      accountIds: [1, 2],
+      selectionTarget: { account_ids: [1, 2] },
+      selectionCount: 2,
       selectedPlatforms: ['antigravity'],
       selectedTypes: ['apikey'],
       proxies: [],
@@ -123,7 +124,7 @@ describe('BulkEditAccountModal', () => {
     await flushPromises()
 
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
-    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith({ account_ids: [1, 2] }, {
       credentials: {
         model_mapping: {}
       }
@@ -142,7 +143,7 @@ describe('BulkEditAccountModal', () => {
     await flushPromises()
 
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
-    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith({ account_ids: [1, 2] }, {
       extra: {
         openai_passthrough: true
       }
@@ -161,7 +162,7 @@ describe('BulkEditAccountModal', () => {
     await flushPromises()
 
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
-    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith({ account_ids: [1, 2] }, {
       extra: {
         openai_oauth_responses_websockets_v2_mode: 'passthrough',
         openai_oauth_responses_websockets_v2_enabled: true
@@ -189,7 +190,7 @@ describe('BulkEditAccountModal', () => {
     await flushPromises()
 
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
-    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith({ account_ids: [1, 2] }, {
       extra: {
         openai_passthrough: false,
         openai_oauth_passthrough: false
@@ -210,11 +211,41 @@ describe('BulkEditAccountModal', () => {
     await flushPromises()
 
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
-    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith({ account_ids: [1, 2] }, {
       extra: {
         openai_passthrough: true
       }
     })
     expect(wrapper.text()).toContain('admin.accounts.openai.modelRestrictionDisabledByPassthrough')
+  })
+
+  it('筛选结果全选时应按 filters 目标提交批量编辑', async () => {
+    const wrapper = mountModal({
+      selectionTarget: {
+        filters: {
+          platform: 'openai',
+          status: 'active',
+          group: 'ungrouped'
+        }
+      },
+      selectionCount: 12,
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth', 'apikey']
+    })
+
+    await wrapper.get('#bulk-edit-status-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith({
+      filters: {
+        platform: 'openai',
+        status: 'active',
+        group: 'ungrouped'
+      }
+    }, {
+      status: 'active'
+    })
   })
 })
