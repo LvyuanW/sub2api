@@ -32,8 +32,9 @@ type TokenRefreshService struct {
 	privacyClientFactory PrivacyClientFactory
 	proxyRepo            ProxyRepository
 
-	stopCh chan struct{}
-	wg     sync.WaitGroup
+	stopCh   chan struct{}
+	stopOnce sync.Once
+	wg       sync.WaitGroup
 }
 
 // NewTokenRefreshService 创建token刷新服务
@@ -130,7 +131,9 @@ func (s *TokenRefreshService) Start() {
 
 // Stop 停止刷新服务（可安全多次调用）
 func (s *TokenRefreshService) Stop() {
-	close(s.stopCh)
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+	})
 	s.wg.Wait()
 	slog.Info("token_refresh.service_stopped")
 }
@@ -300,6 +303,8 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 					"error", setErr,
 				)
 			}
+			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
+			s.ensureOpenAIPrivacy(ctx, account)
 			return err
 		}
 
@@ -326,6 +331,9 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 		"max_retries", s.cfg.MaxRetries,
 		"error", lastErr,
 	)
+
+	// 刷新失败但 access_token 可能仍有效，尝试设置隐私
+	s.ensureOpenAIPrivacy(ctx, account)
 
 	// 设置临时不可调度 10 分钟（不标记 error，保持 status=active 让下个刷新周期能继续尝试）
 	until := time.Now().Add(tokenRefreshTempUnschedDuration)
@@ -425,6 +433,7 @@ func isNonRetryableRefreshError(err error) bool {
 		"unauthorized_client", // 客户端未授权
 		"access_denied",       // 访问被拒绝
 		"missing_project_id",  // 缺少 project_id
+		"no refresh token available",
 	}
 	for _, needle := range nonRetryable {
 		if strings.Contains(msg, needle) {
@@ -443,11 +452,8 @@ func (s *TokenRefreshService) ensureOpenAIPrivacy(ctx context.Context, account *
 	if s.privacyClientFactory == nil {
 		return
 	}
-	// 已设置过则跳过
-	if account.Extra != nil {
-		if _, ok := account.Extra["privacy_mode"]; ok {
-			return
-		}
+	if shouldSkipOpenAIPrivacyEnsure(account.Extra) {
+		return
 	}
 
 	token, _ := account.Credentials["access_token"].(string)
