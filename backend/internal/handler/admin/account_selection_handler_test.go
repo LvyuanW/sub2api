@@ -42,7 +42,7 @@ func (s *selectionAwareAdminService) ListAccounts(
 	page, pageSize int,
 	platform, accountType, status, search string,
 	groupID int64,
-	privacyMode string,
+	privacyMode, sortBy, sortOrder string,
 ) ([]service.Account, int64, error) {
 	s.listCalls = append(s.listCalls, selectionListCall{
 		page:        page,
@@ -54,6 +54,10 @@ func (s *selectionAwareAdminService) ListAccounts(
 		groupID:     groupID,
 		privacyMode: privacyMode,
 	})
+
+	_ = ctx
+	_ = sortBy
+	_ = sortOrder
 
 	filtered := make([]service.Account, 0, len(s.accounts))
 	for _, account := range s.accounts {

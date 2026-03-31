@@ -218,6 +218,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
 	filters := accountSelectionFiltersFromQuery(c)
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
+	sortBy := c.Query("sort_by")
+	sortOrder := c.Query("sort_order")
 
 	groupID, err := parseAccountSelectionGroupID(filters.Group)
 	if err != nil {
@@ -235,6 +237,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 		filters.Search,
 		groupID,
 		filters.PrivacyMode,
+		sortBy,
+		sortOrder,
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -2071,7 +2075,7 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "", "")
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return

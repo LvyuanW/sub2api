@@ -140,6 +140,8 @@ func (h *AccountHandler) listAccountsForSelectionFilters(ctx context.Context, fi
 			filters.Search,
 			groupID,
 			filters.PrivacyMode,
+			"",
+			"",
 		)
 		if err != nil {
 			return nil, err

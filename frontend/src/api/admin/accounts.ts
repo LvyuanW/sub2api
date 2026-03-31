@@ -40,6 +40,8 @@ export async function list(
     search?: string
     privacy_mode?: string
     lite?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
   },
   options?: {
     signal?: AbortSignal
@@ -93,6 +95,8 @@ export async function listWithEtag(
     search?: string
     privacy_mode?: string
     lite?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
   },
   options?: {
     signal?: AbortSignal
