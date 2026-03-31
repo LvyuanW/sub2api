@@ -908,7 +908,6 @@ watch(visibleAccountSortKeySignature, () => {
   params.sort_order = nextSort.sort_order
   reload()
 }, { flush: 'post' })
-
 const isAnyModalOpen = computed(() => {
   return (
     showCreate.value ||
